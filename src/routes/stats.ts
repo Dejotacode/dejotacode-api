@@ -1,0 +1,2 @@
+import { Hono } from 'hono'; import type { AppEnv } from '../types'; import { ok } from '../lib/response';
+export const stats=new Hono<AppEnv>().get('/',async(c)=>{const row=await c.env.DB.prepare("SELECT (SELECT COUNT(*) FROM posts WHERE status='published') AS tutorials,(SELECT COUNT(*) FROM leads) AS subscribers,(SELECT COALESCE(SUM(total),0) FROM daily_metrics WHERE event_type='page_view') AS readers,(SELECT COUNT(*) FROM media) AS resources").first();return ok(c,row??{tutorials:0,subscribers:0,readers:0,resources:0});});

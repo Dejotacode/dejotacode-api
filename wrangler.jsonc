@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dejotacode-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-08",
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["17 3 * * *"] },
+  "ratelimits": [
+    { "name": "AUTH_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "FORM_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 8, "period": 60 } },
+    { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } }
+  ],
+  "vars": { "ENVIRONMENT": "local", "SITE_ORIGIN": "http://localhost:4321" },
+  "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-local", "database_id": "local" }],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media-local" }],
+  "env": {
+    "preview": {
+      "name": "dejotacode-api-preview",
+      "ratelimits": [
+        { "name": "AUTH_RATE_LIMITER", "namespace_id": "1101", "simple": { "limit": 10, "period": 60 } },
+        { "name": "FORM_RATE_LIMITER", "namespace_id": "1102", "simple": { "limit": 8, "period": 60 } },
+        { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1103", "simple": { "limit": 60, "period": 60 } }
+      ],
+      "vars": { "ENVIRONMENT": "preview", "SITE_ORIGIN": "https://dejotacode-site.joceilton1989.workers.dev" },
+      "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-preview", "database_id": "17fc7337-14e0-43a4-a1bc-1a2d606ea20a" }],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media-preview" }]
+    },
+    "production": {
+      "name": "dejotacode-api",
+      "routes": [{ "pattern": "api.dejotacode.com.br", "custom_domain": true }],
+      "triggers": { "crons": ["17 3 * * *"] },
+      "ratelimits": [
+        { "name": "AUTH_RATE_LIMITER", "namespace_id": "1201", "simple": { "limit": 10, "period": 60 } },
+        { "name": "FORM_RATE_LIMITER", "namespace_id": "1202", "simple": { "limit": 8, "period": 60 } },
+        { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1203", "simple": { "limit": 60, "period": 60 } }
+      ],
+      "vars": { "ENVIRONMENT": "production", "SITE_ORIGIN": "https://dejotacode.com.br" },
+      "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-production", "database_id": "PREENCHER_ID_PRODUCAO" }],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media" }]
+    }
+  }
+}
