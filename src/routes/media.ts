@@ -25,6 +25,7 @@ media.get('/public/*', async (c) => {
   headers.set('etag', object.httpEtag);
   headers.set('cache-control', 'public, max-age=31536000, immutable');
   headers.set('x-content-type-options', 'nosniff');
+  headers.set('cross-origin-resource-policy', 'cross-origin');
   return new Response(object.body, { headers });
 });
 
