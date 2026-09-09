@@ -9,8 +9,17 @@ export const requestContext = createMiddleware<AppEnv>(async (c, next) => {
   c.header('X-Request-Id', c.get('requestId'));
 });
 
-export const securityHeaders = secureHeaders({
-  xFrameOptions: 'DENY', xContentTypeOptions: 'nosniff', referrerPolicy: 'strict-origin-when-cross-origin'
+export const securityHeaders = createMiddleware<AppEnv>(async (c, next) => {
+  const handler = secureHeaders({
+    xFrameOptions: 'DENY',
+    xContentTypeOptions: 'nosniff',
+    referrerPolicy: 'strict-origin-when-cross-origin',
+    crossOriginResourcePolicy: c.req.path.startsWith('/api/media/public/')
+      ? 'cross-origin'
+      : 'same-origin'
+  });
+
+  return handler(c, next);
 });
 
 export const siteCors = createMiddleware<AppEnv>(async (c, next) => {
