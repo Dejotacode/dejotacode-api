@@ -35,7 +35,7 @@
         { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1203", "simple": { "limit": 60, "period": 60 } }
       ],
       "vars": { "ENVIRONMENT": "production", "SITE_ORIGIN": "https://dejotacode.com.br" },
-      "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-production", "database_id": "PREENCHER_ID_PRODUCAO" }],
+      "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-production", "database_id": "832c996c-53f6-47cb-a80b-e72d72d685be" }],
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media" }]
     }
   }
