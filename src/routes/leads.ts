@@ -15,13 +15,35 @@ export const leads = new Hono<AppEnv>().post('/', async (c) => {
   const raw = contentType.includes('application/json')
     ? await c.req.json<unknown>()
     : await c.req.parseBody();
-  const candidate = typeof raw === 'object' && raw !== null ? { ...raw, consent: true } : raw;
+
+  const source = typeof raw === 'object' && raw !== null
+    ? raw as Record<string, unknown>
+    : null;
+  const candidate = source
+    ? { ...source, consent: source.consent === true || source.consent === 'true' }
+    : raw;
+
   const parsed = leadSchema.safeParse(candidate);
-  if (!parsed.success) return fail(c, 'VALIDATION_ERROR', 'Informe um e-mail válido.', 400);
+  if (!parsed.success) {
+    const consentMissing = parsed.error.issues.some((issue) => issue.path[0] === 'consent');
+    return fail(
+      c,
+      'VALIDATION_ERROR',
+      consentMissing
+        ? 'Confirme o consentimento para realizar a inscrição.'
+        : 'Informe um e-mail válido.',
+      400
+    );
+  }
 
   await c.env.DB.prepare(
     'INSERT INTO leads (email, name, resource_slug, consent_at) VALUES (?, ?, ?, ?)'
-  ).bind(parsed.data.email, parsed.data.name ?? null, parsed.data.resource, new Date().toISOString()).run();
+  ).bind(
+    parsed.data.email,
+    parsed.data.name ?? null,
+    parsed.data.resource,
+    new Date().toISOString()
+  ).run();
 
   return ok(c, { message: 'Inscrição realizada com sucesso.' }, 201);
 });
