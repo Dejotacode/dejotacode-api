@@ -21,7 +21,7 @@
         { "name": "FORM_RATE_LIMITER", "namespace_id": "1102", "simple": { "limit": 8, "period": 60 } },
         { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1103", "simple": { "limit": 60, "period": 60 } }
       ],
-      "vars": { "ENVIRONMENT": "preview", "SITE_ORIGIN": "https://dejotacode-site.joceilton1989.workers.dev" },
+      "vars": { "ENVIRONMENT": "preview", "SITE_ORIGIN": "https://dejotacode-v1-1-preview.pages.dev" },
       "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-preview", "database_id": "17fc7337-14e0-43a4-a1bc-1a2d606ea20a" }],
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media-preview" }]
     },
