@@ -6,7 +6,10 @@ import { requireAuth } from '../middleware/auth';
 
 
 const pullNumberSchema = z.coerce.number().int().positive();
-const mergeSchema = z.object({ confirmation: z.literal('PUBLICAR') });
+const mergeSchema = z.object({
+  confirmation: z.literal('PUBLICAR'),
+  expectedHeadSha: z.string().regex(/^[0-9a-f]{40}$/i),
+});
 
 const publicGithubHeaders = {
   Accept: 'application/vnd.github+json',
@@ -190,15 +193,27 @@ editor.post('/pull-request/:number/merge', async (c) => {
   const headers = githubHeaders(token);
   const prResponse = await fetch(`${base}/pulls/${number.data}`, { headers });
   if (!prResponse.ok) return fail(c, 'GITHUB_PR_READ_FAILED', 'Não foi possível consultar o Pull Request.', 502);
-  const pull = await prResponse.json() as { state?: string; merged?: boolean; mergeable?: boolean | null; title?: string; head?: { sha?: string } };
+  const pull = await prResponse.json() as {
+    state?: string;
+    merged?: boolean;
+    mergeable?: boolean | null;
+    title?: string;
+    base?: { ref?: string };
+    head?: { ref?: string; sha?: string };
+  };
   if (pull.merged || pull.state !== 'open') return fail(c, 'GITHUB_PR_NOT_OPEN', 'Este Pull Request não está aberto para publicação.', 409);
+  if (pull.base?.ref !== 'main') return fail(c, 'GITHUB_PR_BASE_INVALID', 'A publicação só aceita Pull Requests destinados à main.', 409);
+  if (!pull.head?.ref?.startsWith('content/admin-')) return fail(c, 'GITHUB_PR_HEAD_INVALID', 'A publicação só aceita branches editoriais criadas pelo Admin.', 409);
   if (pull.mergeable === false) return fail(c, 'GITHUB_PR_CONFLICT', 'O Pull Request possui conflito e precisa de revisão manual.', 409);
   const sha = pull.head?.sha ?? '';
   if (!sha) return fail(c, 'GITHUB_PR_HEAD_MISSING', 'Não foi possível identificar o commit do Pull Request.', 502);
+  if (sha.toLowerCase() !== confirmation.data.expectedHeadSha.toLowerCase()) {
+    return fail(c, 'GITHUB_PR_HEAD_CHANGED', 'O Pull Request mudou desde a última revisão. Atualize o status e revise novamente antes de publicar.', 409);
+  }
   const ci = await readCi(owner, repo, sha);
   if (ci.state !== 'success') return fail(c, 'CI_NOT_GREEN', 'A publicação só é liberada depois que o CI termina com sucesso.', 409);
   const mergeResponse = await fetch(`${base}/pulls/${number.data}/merge`, {
-    method: 'PUT', headers, body: JSON.stringify({ merge_method: 'squash', commit_title: pull.title }),
+    method: 'PUT', headers, body: JSON.stringify({ merge_method: 'squash', commit_title: pull.title, sha }),
   });
   if (!mergeResponse.ok) return fail(c, 'GITHUB_MERGE_FAILED', 'O GitHub recusou o merge. Revise o Pull Request antes de tentar novamente.', 502);
   const merged = await mergeResponse.json() as { merged?: boolean; sha?: string; message?: string };
