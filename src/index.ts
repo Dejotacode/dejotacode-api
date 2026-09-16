@@ -11,6 +11,7 @@ import { cms } from './routes/cms';
 import { media } from './routes/media';
 import { analytics } from './routes/analytics';
 import { stats } from './routes/stats';
+import { editor } from './routes/editor';
 import { requestContext, securityHeaders, siteCors } from './middleware/security';
 import { rateLimit } from './middleware/rate-limit';
 import { auditMutations } from './middleware/audit';
@@ -32,6 +33,7 @@ app.route('/cms', cms);
 app.route('/media', media);
 app.route('/analytics', analytics);
 app.route('/stats', stats);
+app.route('/editor', editor);
 app.notFound((c) => fail(c, 'NOT_FOUND', 'Rota não encontrada.', 404));
 app.onError((error, c) => {
   console.error(JSON.stringify({ requestId: c.get('requestId'), message: error.message }));

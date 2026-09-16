@@ -4,6 +4,8 @@ export type Bindings = {
   ENVIRONMENT: 'local' | 'preview' | 'production';
   SITE_ORIGIN: string;
   CMS_BOOTSTRAP_TOKEN: string;
+  GITHUB_EDITOR_TOKEN?: string;
+  GITHUB_EDITOR_REPO?: string;
   AUTH_RATE_LIMITER: RateLimit;
   FORM_RATE_LIMITER: RateLimit;
   ANALYTICS_RATE_LIMITER: RateLimit;

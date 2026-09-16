@@ -10,7 +10,7 @@
     { "name": "FORM_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 8, "period": 60 } },
     { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1003", "simple": { "limit": 60, "period": 60 } }
   ],
-  "vars": { "ENVIRONMENT": "local", "SITE_ORIGIN": "http://localhost:4321" },
+  "vars": { "ENVIRONMENT": "local", "SITE_ORIGIN": "http://localhost:4321", "GITHUB_EDITOR_REPO": "Dejotacode/dejotacode" },
   "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-local", "database_id": "local" }],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media-local" }],
   "env": {
@@ -21,7 +21,7 @@
         { "name": "FORM_RATE_LIMITER", "namespace_id": "1102", "simple": { "limit": 8, "period": 60 } },
         { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1103", "simple": { "limit": 60, "period": 60 } }
       ],
-      "vars": { "ENVIRONMENT": "preview", "SITE_ORIGIN": "https://dejotacode-v1-1-preview.pages.dev" },
+      "vars": { "ENVIRONMENT": "preview", "SITE_ORIGIN": "https://dejotacode-v1-1-preview.pages.dev", "GITHUB_EDITOR_REPO": "Dejotacode/dejotacode" },
       "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-preview", "database_id": "17fc7337-14e0-43a4-a1bc-1a2d606ea20a" }],
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media-preview" }]
     },
@@ -34,7 +34,7 @@
         { "name": "FORM_RATE_LIMITER", "namespace_id": "1202", "simple": { "limit": 8, "period": 60 } },
         { "name": "ANALYTICS_RATE_LIMITER", "namespace_id": "1203", "simple": { "limit": 60, "period": 60 } }
       ],
-      "vars": { "ENVIRONMENT": "production", "SITE_ORIGIN": "https://dejotacode.com.br" },
+      "vars": { "ENVIRONMENT": "production", "SITE_ORIGIN": "https://dejotacode.com.br", "GITHUB_EDITOR_REPO": "Dejotacode/dejotacode" },
       "d1_databases": [{ "binding": "DB", "database_name": "dejotacode-production", "database_id": "832c996c-53f6-47cb-a80b-e72d72d685be" }],
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "dejotacode-media" }]
     }
