@@ -27,3 +27,6 @@ jobs:
 
       - name: Typecheck
         run: npm run check
+
+      - name: Validate operational scripts
+        run: npm run check:ops
