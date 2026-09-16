@@ -12,6 +12,7 @@ const allowed = new Map([
   ['application/zip', 'zip']
 ]);
 const maxSize = 10 * 1024 * 1024;
+const postSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const media = new Hono<AppEnv>();
 
@@ -44,6 +45,7 @@ media.post('/cms', async (c) => {
   const form = await c.req.formData();
   const file = form.get('file');
   const alt = String(form.get('alt') ?? '').trim();
+  const postSlug = String(form.get('postSlug') ?? '').trim();
   if (!(file instanceof File)) return fail(c, 'FILE_REQUIRED', 'Selecione um arquivo.', 400);
   const extension = allowed.get(file.type);
   if (!extension) return fail(c, 'TYPE_NOT_ALLOWED', 'Use JPG, PNG, WebP, AVIF, PDF ou ZIP.', 400);
@@ -51,10 +53,15 @@ media.post('/cms', async (c) => {
   if (file.type.startsWith('image/') && (alt.length < 3 || alt.length > 220)) {
     return fail(c, 'ALT_REQUIRED', 'Descreva a imagem em até 220 caracteres.', 400);
   }
+  if (postSlug && !postSlugPattern.test(postSlug)) {
+    return fail(c, 'POST_SLUG_INVALID', 'Slug editorial inválido para organizar a imagem.', 400);
+  }
 
   const now = new Date();
-  const group = file.type.startsWith('image/') ? 'images' : 'downloads';
-  const key = `${group}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}.${extension}`;
+  const isImage = file.type.startsWith('image/');
+  const group = isImage && postSlug ? `posts/${postSlug}` : isImage ? 'images' : 'downloads';
+  const datePath = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const key = `${group}/${datePath}/${crypto.randomUUID()}.${extension}`;
   await c.env.MEDIA.put(key, file.stream(), {
     httpMetadata: { contentType: file.type, cacheControl: 'public, max-age=31536000, immutable' },
     customMetadata: { originalName: file.name }
