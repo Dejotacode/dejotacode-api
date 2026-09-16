@@ -10,7 +10,8 @@
     "db:local": "wrangler d1 migrations apply DB --local",
     "db:preview": "wrangler d1 migrations apply DB --env preview --remote",
     "db:production": "wrangler d1 migrations apply DB --env production --remote",
-    "backup:d1:production": "node scripts/backup-d1-production.mjs"
+    "backup:d1:production": "node scripts/backup-d1-production.mjs",
+    "inventory:r2:production": "node scripts/inventory-r2-production.mjs"
   },
   "dependencies": {
     "hono": "^4.13.7",

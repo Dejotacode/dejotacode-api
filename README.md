@@ -61,6 +61,16 @@ Use `--dry-run` primeiro para conferir destino e comando sem acessar o banco. A 
 
 O diretório pode ser sobrescrito com `DEJOTACODE_BACKUP_DIR`. Backups podem conter dados pessoais/operacionais e não devem ser commitados, anexados a issues públicas ou copiados para locais inseguros.
 
+## Inventário read-only de mídia R2
+
+```bash
+npm run inventory:r2:production
+```
+
+O comando consulta somente metadados da tabela `media` no D1 e valida cada URL pública com `HEAD`. Ele não baixa nem altera os objetos. A saída agrega quantidade, bytes, grupos e tipos, além do total de URLs alcançáveis.
+
+Limitação: como o Wrangler atual não lista o bucket completo, esse inventário não detecta objetos órfãos no R2 que não tenham registro na tabela `media`.
+
 ## Fonte canônica
 
 Este repositório foi criado a partir do histórico da antiga árvore `api/` do monorepo DejotaCode. A linha preservada inclui as correções de consentimento e a ampliação do analytics usada na fase de crescimento da plataforma.
