@@ -97,9 +97,25 @@ analytics.get('/summary', requireAuth, async (c) => {
     `,
   ).all();
 
+  const campaigns = await c.env.DB.prepare(
+    `
+      SELECT
+        campaign,
+        event_type AS event,
+        SUM(total) AS total
+      FROM daily_metrics
+      WHERE metric_date >= date('now', '-30 days')
+        AND campaign <> ''
+      GROUP BY campaign, event_type
+      ORDER BY total DESC
+      LIMIT 20
+    `,
+  ).all();
+
   return ok(c, {
     periodDays: 30,
     totals: totals.results,
     pages: pages.results,
+    campaigns: campaigns.results,
   });
 });
