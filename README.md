@@ -1,6 +1,39 @@
-# DejotaCode API
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Dejotacode/dejotacode/main/public/assets/brand/dejotacode-app-icon.svg" width="64" alt="Símbolo DejotaCode" />
+</p>
 
-API oficial do DejotaCode, construída com Hono sobre Cloudflare Workers.
+<h1 align="center">DejotaCode API</h1>
+
+<p align="center">
+  API edge oficial do DejotaCode para autenticação, formulários, analytics, mídia editorial e operações administrativas.
+</p>
+
+<p align="center">
+  <a href="https://api.dejotacode.com.br">API em produção</a> ·
+  <a href="https://dejotacode.com.br">Frontend</a> ·
+  <a href="https://github.com/Dejotacode/dejotacode">Repositório principal</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Dejotacode/dejotacode-api/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Dejotacode/dejotacode-api/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Dejotacode/dejotacode-api/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Dejotacode/dejotacode-api?style=flat-square&label=release&color=0A0D12&labelColor=0A0D12"></a>
+</p>
+
+<p align="center">
+  <img alt="Hono" src="https://img.shields.io/badge/Hono-0A0D12?style=flat-square&logo=hono&logoColor=00E5FF">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-0A0D12?style=flat-square&logo=typescript&logoColor=00E5FF">
+  <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Workers-0A0D12?style=flat-square&logo=cloudflareworkers&logoColor=00E5FF">
+  <img alt="Cloudflare D1" src="https://img.shields.io/badge/D1-0A0D12?style=flat-square&logo=cloudflare&logoColor=00E5FF">
+  <img alt="Cloudflare R2" src="https://img.shields.io/badge/R2-0A0D12?style=flat-square&logo=cloudflare&logoColor=00E5FF">
+</p>
+
+## Visão operacional
+
+A API roda em **Cloudflare Workers** e mantém responsabilidades separadas do frontend estático. Alterações passam por Pull Request e CI antes de chegar à `main`; deploy, migrations e secrets continuam sendo operações controladas separadamente.
+
+**Produção:** https://api.dejotacode.com.br
+
+**Release atual:** `v1.11.0`
 
 ## Stack
 
