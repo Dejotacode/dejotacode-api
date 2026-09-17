@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import type { AppEnv } from '../types';
 import { fail, ok } from '../lib/response';
 import { requireAuth } from '../middleware/auth';
@@ -13,6 +14,10 @@ const allowed = new Map([
 ]);
 const maxSize = 10 * 1024 * 1024;
 const postSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const reviewSchema = z.object({
+  status: z.enum(['pending', 'keep', 'candidate']),
+  note: z.string().trim().max(500).optional().default('')
+});
 
 export const media = new Hono<AppEnv>();
 
@@ -35,7 +40,9 @@ media.use('/cms/*', requireAuth);
 media.get('/cms', async (c) => {
   const result = await c.env.DB.prepare(
     `SELECT id,object_key AS objectKey,content_type AS contentType,
-      size_bytes AS sizeBytes,alt_text AS altText,created_at AS createdAt
+      size_bytes AS sizeBytes,alt_text AS altText,created_at AS createdAt,
+      review_status AS reviewStatus,review_note AS reviewNote,
+      reviewed_at AS reviewedAt,reviewed_by AS reviewedBy
      FROM media ORDER BY created_at DESC LIMIT 100`
   ).all();
   return ok(c, { items: result.results });
@@ -80,6 +87,32 @@ media.post('/cms', async (c) => {
     await c.env.MEDIA.delete(key);
     throw error;
   }
+});
+
+
+media.patch('/cms/:id/review', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id < 1) return fail(c, 'VALIDATION_ERROR', 'Mídia inválida.', 400);
+  const parsed = reviewSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 'VALIDATION_ERROR', 'Revise o estado e a nota da mídia.', 400);
+  const exists = await c.env.DB.prepare('SELECT id FROM media WHERE id=? LIMIT 1').bind(id).first();
+  if (!exists) return fail(c, 'MEDIA_NOT_FOUND', 'Arquivo não encontrado.', 404);
+
+  const { status, note } = parsed.data;
+  const userId = c.get('user').id;
+  await c.env.DB.prepare(
+    `UPDATE media SET review_status=?,review_note=?,
+      reviewed_at=CASE WHEN ?='pending' THEN NULL ELSE CURRENT_TIMESTAMP END,
+      reviewed_by=CASE WHEN ?='pending' THEN NULL ELSE ? END
+     WHERE id=?`
+  ).bind(status, note || null, status, status, userId, id).run();
+
+  return ok(c, {
+    id,
+    reviewStatus: status,
+    reviewNote: note || null,
+    reviewedBy: status === 'pending' ? null : userId
+  });
 });
 
 media.delete('/cms/:id', async (c) => {
