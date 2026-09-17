@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { AppEnv } from '../types';
 import { fail, ok } from '../lib/response';
-import { requireAuth } from '../middleware/auth';
+import { requireAdmin, requireAuth } from '../middleware/auth';
+import { hashToken, randomToken } from '../lib/crypto';
 
 const allowed = new Map([
   ['image/jpeg', 'jpg'],
@@ -22,6 +23,71 @@ const cleanupSchema = z.object({
   status: z.enum(['pending', 'approved']),
   note: z.string().trim().max(500).optional().default('')
 });
+const deleteDryRunSchema = z.object({
+  objectKey: z.string().trim().min(1).max(1024)
+});
+const deleteSchema = z.object({
+  confirmation: z.literal('EXCLUIR'),
+  objectKey: z.string().trim().min(1).max(1024),
+  dryRunToken: z.string().trim().min(20).max(256)
+});
+
+
+const githubHeaders = (token: string) => ({
+  Accept: 'application/vnd.github+json',
+  Authorization: `Bearer ${token}`,
+  'X-GitHub-Api-Version': '2022-11-28',
+  'User-Agent': 'DejotaCode-Media-Cleanup',
+});
+
+const decodeBase64Utf8 = (value: string) => {
+  const binary = atob(value.replace(/\n/g, ''));
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+};
+
+const findMarkdownReferences = async (env: AppEnv['Bindings'], objectKey: string) => {
+  const token = env.GITHUB_EDITOR_TOKEN?.trim();
+  if (!token) throw new Error('GITHUB_NOT_CONFIGURED');
+  const repository = env.GITHUB_EDITOR_REPO || 'Dejotacode/dejotacode';
+  const [owner, repo] = repository.split('/');
+  if (!owner || !repo) throw new Error('GITHUB_REPO_INVALID');
+  const base = `https://api.github.com/repos/${owner}/${repo}`;
+  const headers = githubHeaders(token);
+  const listResponse = await fetch(`${base}/contents/src/content/posts?ref=main`, { headers });
+  if (!listResponse.ok) throw new Error('GITHUB_CONTENT_READ_FAILED');
+  const files = await listResponse.json() as Array<{ name?: string; path?: string; sha?: string; type?: string }>;
+  const markdownFiles = files.filter((file) => file.type === 'file' && file.name?.endsWith('.md') && file.sha && file.path);
+  const references: string[] = [];
+  for (const file of markdownFiles) {
+    const blobResponse = await fetch(`${base}/git/blobs/${encodeURIComponent(file.sha!)}`, { headers });
+    if (!blobResponse.ok) throw new Error('GITHUB_CONTENT_READ_FAILED');
+    const blob = await blobResponse.json() as { content?: string; encoding?: string };
+    if (blob.encoding !== 'base64' || !blob.content) throw new Error('GITHUB_CONTENT_READ_FAILED');
+    const content = decodeBase64Utf8(blob.content);
+    if (content.includes(objectKey) || content.includes(`/api/media/public/${objectKey}`)) references.push(file.path!);
+  }
+  return references;
+};
+
+const inspectDeletionEligibility = async (env: AppEnv['Bindings'], objectKey: string) => {
+  const coverUsage = await env.DB.prepare(
+    'SELECT COUNT(*) AS total FROM posts WHERE cover_key=?'
+  ).bind(objectKey).first<{ total: number }>();
+  const object = await env.MEDIA.head(objectKey);
+  const markdownReferences = await findMarkdownReferences(env, objectKey);
+  const blockers: string[] = [];
+  if ((coverUsage?.total ?? 0) > 0) blockers.push('used_as_cover');
+  if (markdownReferences.length > 0) blockers.push('referenced_in_markdown');
+  if (!object) blockers.push('missing_in_r2');
+  return {
+    eligible: blockers.length === 0,
+    blockers,
+    coverUsage: coverUsage?.total ?? 0,
+    markdownReferences,
+    r2Exists: Boolean(object),
+  };
+};
 
 export const media = new Hono<AppEnv>();
 
@@ -48,7 +114,8 @@ media.get('/cms', async (c) => {
       review_status AS reviewStatus,review_note AS reviewNote,
       reviewed_at AS reviewedAt,reviewed_by AS reviewedBy,
       cleanup_status AS cleanupStatus,cleanup_note AS cleanupNote,
-      cleanup_approved_at AS cleanupApprovedAt,cleanup_approved_by AS cleanupApprovedBy
+      cleanup_approved_at AS cleanupApprovedAt,cleanup_approved_by AS cleanupApprovedBy,
+      delete_check_expires_at AS deleteCheckExpiresAt,delete_checked_at AS deleteCheckedAt
      FROM media ORDER BY created_at DESC LIMIT 100`
   ).all();
   return ok(c, { items: result.results });
@@ -113,7 +180,8 @@ media.patch('/cms/:id/review', async (c) => {
       cleanup_status=CASE WHEN ?='candidate' THEN cleanup_status ELSE 'pending' END,
       cleanup_note=CASE WHEN ?='candidate' THEN cleanup_note ELSE NULL END,
       cleanup_approved_at=CASE WHEN ?='candidate' THEN cleanup_approved_at ELSE NULL END,
-      cleanup_approved_by=CASE WHEN ?='candidate' THEN cleanup_approved_by ELSE NULL END
+      cleanup_approved_by=CASE WHEN ?='candidate' THEN cleanup_approved_by ELSE NULL END,
+      delete_check_hash=NULL,delete_check_expires_at=NULL,delete_checked_at=NULL,delete_checked_by=NULL
      WHERE id=?`
   ).bind(status, note || null, status, status, userId, status, status, status, status, id).run();
 
@@ -144,7 +212,8 @@ media.patch('/cms/:id/cleanup', async (c) => {
   await c.env.DB.prepare(
     `UPDATE media SET cleanup_status=?,cleanup_note=?,
       cleanup_approved_at=CASE WHEN ?='approved' THEN CURRENT_TIMESTAMP ELSE NULL END,
-      cleanup_approved_by=CASE WHEN ?='approved' THEN ? ELSE NULL END
+      cleanup_approved_by=CASE WHEN ?='approved' THEN ? ELSE NULL END,
+      delete_check_hash=NULL,delete_check_expires_at=NULL,delete_checked_at=NULL,delete_checked_by=NULL
      WHERE id=?`
   ).bind(status, note || null, status, status, userId, id).run();
 
@@ -156,20 +225,91 @@ media.patch('/cms/:id/cleanup', async (c) => {
   });
 });
 
-media.delete('/cms/:id', async (c) => {
+media.post('/cms/:id/delete-dry-run', requireAdmin, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id < 1) return fail(c, 'VALIDATION_ERROR', 'Mídia inválida.', 400);
+  const parsed = deleteDryRunSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 'VALIDATION_ERROR', 'Confirme a chave exata da mídia.', 400);
   const row = await c.env.DB.prepare(
-    'SELECT object_key AS objectKey FROM media WHERE id=? LIMIT 1'
-  ).bind(c.req.param('id')).first<{ objectKey: string }>();
+    `SELECT object_key AS objectKey,review_status AS reviewStatus,cleanup_status AS cleanupStatus
+     FROM media WHERE id=? LIMIT 1`
+  ).bind(id).first<{ objectKey: string; reviewStatus: string; cleanupStatus: string }>();
   if (!row) return fail(c, 'MEDIA_NOT_FOUND', 'Arquivo não encontrado.', 404);
+  if (row.objectKey !== parsed.data.objectKey) return fail(c, 'MEDIA_KEY_MISMATCH', 'A chave informada não corresponde à mídia.', 409);
+  if (row.reviewStatus !== 'candidate' || row.cleanupStatus !== 'approved') {
+    return fail(c, 'MEDIA_CLEANUP_NOT_APPROVED', 'A mídia precisa concluir as duas revisões antes do dry-run.', 409);
+  }
 
-  const usage = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS total FROM posts WHERE cover_key=?'
-  ).bind(row.objectKey).first<{ total: number }>();
-  if ((usage?.total ?? 0) > 0) {
-    return fail(c, 'MEDIA_IN_USE', 'Remova esta capa dos conteúdos antes de excluir o arquivo.', 409);
+  let inspection;
+  try {
+    inspection = await inspectDeletionEligibility(c.env, row.objectKey);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'MEDIA_DELETE_CHECK_FAILED';
+    return fail(c, code, 'Não foi possível revalidar todas as referências. A exclusão permanece bloqueada.', 502);
+  }
+  if (!inspection.eligible) {
+    await c.env.DB.prepare(
+      'UPDATE media SET delete_check_hash=NULL,delete_check_expires_at=NULL,delete_checked_at=CURRENT_TIMESTAMP,delete_checked_by=? WHERE id=?'
+    ).bind(c.get('user').id, id).run();
+    return ok(c, { ...inspection, message: 'Dry-run bloqueado. Nenhuma exclusão foi executada.' });
+  }
+
+  const token = randomToken(32);
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+  await c.env.DB.prepare(
+    `UPDATE media SET delete_check_hash=?,delete_check_expires_at=?,delete_checked_at=CURRENT_TIMESTAMP,delete_checked_by=? WHERE id=?`
+  ).bind(await hashToken(token), expiresAt, c.get('user').id, id).run();
+  return ok(c, {
+    ...inspection,
+    dryRunToken: token,
+    expiresAt,
+    message: 'Dry-run aprovado. Nenhuma exclusão foi executada.'
+  });
+});
+
+media.delete('/cms/:id', requireAdmin, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id < 1) return fail(c, 'VALIDATION_ERROR', 'Mídia inválida.', 400);
+  const parsed = deleteSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 'VALIDATION_ERROR', 'Confirmação final inválida.', 400);
+  const row = await c.env.DB.prepare(
+    `SELECT object_key AS objectKey,review_status AS reviewStatus,cleanup_status AS cleanupStatus,
+      delete_check_hash AS deleteCheckHash,delete_check_expires_at AS deleteCheckExpiresAt
+     FROM media WHERE id=? LIMIT 1`
+  ).bind(id).first<{
+    objectKey: string;
+    reviewStatus: string;
+    cleanupStatus: string;
+    deleteCheckHash: string | null;
+    deleteCheckExpiresAt: string | null;
+  }>();
+  if (!row) return fail(c, 'MEDIA_NOT_FOUND', 'Arquivo não encontrado.', 404);
+  if (row.objectKey !== parsed.data.objectKey) return fail(c, 'MEDIA_KEY_MISMATCH', 'A chave informada não corresponde à mídia.', 409);
+  if (row.reviewStatus !== 'candidate' || row.cleanupStatus !== 'approved') {
+    return fail(c, 'MEDIA_CLEANUP_NOT_APPROVED', 'A mídia não possui aprovação final válida.', 409);
+  }
+  if (!row.deleteCheckHash || !row.deleteCheckExpiresAt || new Date(row.deleteCheckExpiresAt).getTime() <= Date.now()) {
+    return fail(c, 'MEDIA_DRY_RUN_REQUIRED', 'Execute um novo dry-run antes da exclusão.', 409);
+  }
+  if (await hashToken(parsed.data.dryRunToken) !== row.deleteCheckHash) {
+    return fail(c, 'MEDIA_DRY_RUN_INVALID', 'O token do dry-run não corresponde à verificação mais recente.', 409);
+  }
+
+  let inspection;
+  try {
+    inspection = await inspectDeletionEligibility(c.env, row.objectKey);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'MEDIA_DELETE_CHECK_FAILED';
+    return fail(c, code, 'Não foi possível repetir a verificação final. A exclusão foi bloqueada.', 502);
+  }
+  if (!inspection.eligible) {
+    await c.env.DB.prepare(
+      'UPDATE media SET delete_check_hash=NULL,delete_check_expires_at=NULL WHERE id=?'
+    ).bind(id).run();
+    return fail(c, 'MEDIA_DELETE_BLOCKED', 'Uma referência apareceu após o dry-run. A exclusão foi bloqueada.', 409);
   }
 
   await c.env.MEDIA.delete(row.objectKey);
-  await c.env.DB.prepare('DELETE FROM media WHERE id=?').bind(c.req.param('id')).run();
-  return ok(c, { message: 'Arquivo removido.' });
+  await c.env.DB.prepare('DELETE FROM media WHERE id=?').bind(id).run();
+  return ok(c, { message: 'Arquivo removido após dry-run e revalidação final.', objectKey: row.objectKey });
 });
