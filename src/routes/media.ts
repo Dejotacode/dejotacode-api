@@ -121,6 +121,61 @@ media.get('/cms', async (c) => {
   return ok(c, { items: result.results });
 });
 
+media.get('/cms/:id/history', requireAdmin, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id < 1) return fail(c, 'VALIDATION_ERROR', 'Mídia inválida.', 400);
+  const row = await c.env.DB.prepare(
+    `SELECT m.id,m.object_key AS objectKey,m.created_at AS createdAt,
+      m.uploaded_by AS uploadedBy,u0.name AS uploadedByName,
+      m.review_status AS reviewStatus,m.review_note AS reviewNote,m.reviewed_at AS reviewedAt,
+      m.reviewed_by AS reviewedBy,u1.name AS reviewedByName,
+      m.cleanup_status AS cleanupStatus,m.cleanup_note AS cleanupNote,m.cleanup_approved_at AS cleanupApprovedAt,
+      m.cleanup_approved_by AS cleanupApprovedBy,u2.name AS cleanupApprovedByName,
+      m.delete_check_hash AS deleteCheckHash,m.delete_check_expires_at AS deleteCheckExpiresAt,
+      m.delete_checked_at AS deleteCheckedAt,m.delete_checked_by AS deleteCheckedBy,u3.name AS deleteCheckedByName
+     FROM media m
+     LEFT JOIN users u0 ON u0.id=m.uploaded_by
+     LEFT JOIN users u1 ON u1.id=m.reviewed_by
+     LEFT JOIN users u2 ON u2.id=m.cleanup_approved_by
+     LEFT JOIN users u3 ON u3.id=m.delete_checked_by
+     WHERE m.id=? LIMIT 1`
+  ).bind(id).first<Record<string, unknown>>();
+  if (!row) return fail(c, 'MEDIA_NOT_FOUND', 'Arquivo não encontrado.', 404);
+
+  const prefix = `/api/media/cms/${id}`;
+  const logs = await c.env.DB.prepare(
+    `SELECT a.id,a.action,a.path,a.request_id AS requestId,a.created_at AS createdAt,
+      a.user_id AS userId,u.name AS userName
+     FROM audit_logs a LEFT JOIN users u ON u.id=a.user_id
+     WHERE a.path=? OR a.path LIKE ?
+     ORDER BY a.created_at DESC,a.id DESC LIMIT 50`
+  ).bind(prefix, `${prefix}/%`).all();
+
+  const now = Date.now();
+  const expiresAt = typeof row.deleteCheckExpiresAt === 'string' ? row.deleteCheckExpiresAt : null;
+  const dryRunStatus = !row.deleteCheckedAt
+    ? 'never'
+    : !row.deleteCheckHash
+      ? 'blocked'
+      : expiresAt && new Date(expiresAt).getTime() <= now
+        ? 'expired'
+        : 'approved';
+
+  return ok(c, {
+    media: {
+      id: row.id, objectKey: row.objectKey,
+      createdAt: row.createdAt, uploadedBy: row.uploadedBy, uploadedByName: row.uploadedByName,
+      reviewStatus: row.reviewStatus, reviewNote: row.reviewNote, reviewedAt: row.reviewedAt,
+      reviewedBy: row.reviewedBy, reviewedByName: row.reviewedByName,
+      cleanupStatus: row.cleanupStatus, cleanupNote: row.cleanupNote, cleanupApprovedAt: row.cleanupApprovedAt,
+      cleanupApprovedBy: row.cleanupApprovedBy, cleanupApprovedByName: row.cleanupApprovedByName,
+      deleteCheckedAt: row.deleteCheckedAt, deleteCheckedBy: row.deleteCheckedBy,
+      deleteCheckedByName: row.deleteCheckedByName, deleteCheckExpiresAt: expiresAt, dryRunStatus
+    },
+    audit: logs.results
+  });
+});
+
 media.post('/cms', async (c) => {
   const form = await c.req.formData();
   const file = form.get('file');
