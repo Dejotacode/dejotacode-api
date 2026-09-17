@@ -1,0 +1,19 @@
+name: Bug report
+about: Relate um problema reproduzível na DejotaCode API
+body:
+  - type: textarea
+    attributes:
+      label: Problema
+      description: Descreva comportamento observado e esperado sem incluir secrets.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Como reproduzir
+      description: Informe rota, ambiente e passos mínimos seguros.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Evidências
+      description: Status HTTP, request ID ou logs sanitizados.
