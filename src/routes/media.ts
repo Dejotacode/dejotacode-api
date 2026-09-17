@@ -26,10 +26,15 @@ const cleanupSchema = z.object({
 const deleteDryRunSchema = z.object({
   objectKey: z.string().trim().min(1).max(1024)
 });
+const deleteSnapshotSchema = z.object({
+  objectKey: z.string().trim().min(1).max(1024),
+  dryRunToken: z.string().trim().min(20).max(256)
+});
 const deleteSchema = z.object({
   confirmation: z.literal('EXCLUIR'),
   objectKey: z.string().trim().min(1).max(1024),
-  dryRunToken: z.string().trim().min(20).max(256)
+  dryRunToken: z.string().trim().min(20).max(256),
+  snapshotId: z.number().int().positive()
 });
 
 
@@ -322,6 +327,115 @@ media.post('/cms/:id/delete-dry-run', requireAdmin, async (c) => {
   });
 });
 
+media.post('/cms/:id/delete-snapshot', requireAdmin, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id < 1) return fail(c, 'VALIDATION_ERROR', 'Mídia inválida.', 400);
+  const parsed = deleteSnapshotSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 'VALIDATION_ERROR', 'Confirmação do snapshot inválida.', 400);
+
+  const row = await c.env.DB.prepare(
+    `SELECT id,object_key AS objectKey,content_type AS contentType,size_bytes AS sizeBytes,alt_text AS altText,
+      created_at AS createdAt,uploaded_by AS uploadedBy,review_status AS reviewStatus,review_note AS reviewNote,
+      reviewed_at AS reviewedAt,reviewed_by AS reviewedBy,cleanup_status AS cleanupStatus,cleanup_note AS cleanupNote,
+      cleanup_approved_at AS cleanupApprovedAt,cleanup_approved_by AS cleanupApprovedBy,
+      delete_check_hash AS deleteCheckHash,delete_check_expires_at AS deleteCheckExpiresAt,
+      delete_checked_at AS deleteCheckedAt,delete_checked_by AS deleteCheckedBy
+     FROM media WHERE id=? LIMIT 1`
+  ).bind(id).first<{
+    id: number;
+    objectKey: string;
+    contentType: string;
+    sizeBytes: number;
+    altText: string | null;
+    createdAt: string;
+    uploadedBy: number | null;
+    reviewStatus: string;
+    reviewNote: string | null;
+    reviewedAt: string | null;
+    reviewedBy: number | null;
+    cleanupStatus: string;
+    cleanupNote: string | null;
+    cleanupApprovedAt: string | null;
+    cleanupApprovedBy: number | null;
+    deleteCheckHash: string | null;
+    deleteCheckExpiresAt: string | null;
+    deleteCheckedAt: string | null;
+    deleteCheckedBy: number | null;
+  }>();
+  if (!row) return fail(c, 'MEDIA_NOT_FOUND', 'Arquivo não encontrado.', 404);
+  if (row.objectKey !== parsed.data.objectKey) return fail(c, 'MEDIA_KEY_MISMATCH', 'A chave informada não corresponde à mídia.', 409);
+  if (row.reviewStatus !== 'candidate' || row.cleanupStatus !== 'approved') {
+    return fail(c, 'MEDIA_CLEANUP_NOT_APPROVED', 'A mídia não possui aprovação final válida.', 409);
+  }
+
+  const expiresAt = row.deleteCheckExpiresAt;
+  if (!row.deleteCheckHash || !expiresAt || new Date(expiresAt).getTime() <= Date.now()) {
+    return fail(c, 'MEDIA_DRY_RUN_REQUIRED', 'Execute um novo dry-run antes de gerar o snapshot.', 409);
+  }
+  if (await hashToken(parsed.data.dryRunToken) !== row.deleteCheckHash) {
+    return fail(c, 'MEDIA_DRY_RUN_INVALID', 'O token do dry-run não corresponde à verificação mais recente.', 409);
+  }
+
+  let inspection;
+  try {
+    inspection = await inspectDeletionEligibility(c.env, row.objectKey);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'MEDIA_DELETE_CHECK_FAILED';
+    return fail(c, code, 'Não foi possível gerar a evidência final. A exclusão permanece bloqueada.', 502);
+  }
+  if (!inspection.eligible) {
+    return fail(c, 'MEDIA_DELETE_BLOCKED', 'O snapshot encontrou uma referência ativa. A exclusão permanece bloqueada.', 409);
+  }
+
+  const actorId = c.get('user').id;
+  const requestId = c.get('requestId');
+  const capturedAt = new Date().toISOString();
+  const snapshotPayload = {
+    media: {
+      id: row.id,
+      objectKey: row.objectKey,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      altText: row.altText,
+      createdAt: row.createdAt,
+      uploadedBy: row.uploadedBy,
+      reviewStatus: row.reviewStatus,
+      reviewNote: row.reviewNote,
+      reviewedAt: row.reviewedAt,
+      reviewedBy: row.reviewedBy,
+      cleanupStatus: row.cleanupStatus,
+      cleanupNote: row.cleanupNote,
+      cleanupApprovedAt: row.cleanupApprovedAt,
+      cleanupApprovedBy: row.cleanupApprovedBy,
+    },
+    dryRun: {
+      checkedAt: row.deleteCheckedAt,
+      checkedBy: row.deleteCheckedBy,
+      expiresAt,
+    },
+    checks: inspection,
+    actor: { id: actorId },
+    requestId,
+    capturedAt,
+  };
+  const snapshotJson = JSON.stringify(snapshotPayload);
+  const snapshotHash = await hashToken(snapshotJson);
+  const result = await c.env.DB.prepare(
+    `INSERT INTO media_delete_snapshots
+      (media_id,object_key,dry_run_hash,snapshot_json,snapshot_hash,eligible,created_by,request_id)
+     VALUES (?,?,?,?,?,1,?,?)`
+  ).bind(id, row.objectKey, row.deleteCheckHash, snapshotJson, snapshotHash, actorId, requestId).run();
+
+  return ok(c, {
+    snapshotId: Number(result.meta.last_row_id),
+    snapshotHash,
+    capturedAt,
+    expiresAt,
+    inspection,
+    message: 'Snapshot final registrado. Nenhuma exclusão foi executada.'
+  });
+});
+
 media.delete('/cms/:id', requireAdmin, async (c) => {
   const id = Number(c.req.param('id'));
   if (!Number.isInteger(id) || id < 1) return fail(c, 'VALIDATION_ERROR', 'Mídia inválida.', 400);
@@ -348,6 +462,26 @@ media.delete('/cms/:id', requireAdmin, async (c) => {
   }
   if (await hashToken(parsed.data.dryRunToken) !== row.deleteCheckHash) {
     return fail(c, 'MEDIA_DRY_RUN_INVALID', 'O token do dry-run não corresponde à verificação mais recente.', 409);
+  }
+  const snapshot = await c.env.DB.prepare(
+    `SELECT id,object_key AS objectKey,dry_run_hash AS dryRunHash,eligible,created_at AS createdAt
+     FROM media_delete_snapshots WHERE id=? AND media_id=? LIMIT 1`
+  ).bind(parsed.data.snapshotId, id).first<{
+    id: number;
+    objectKey: string;
+    dryRunHash: string;
+    eligible: number;
+    createdAt: string;
+  }>();
+  if (!snapshot || snapshot.objectKey !== row.objectKey || snapshot.eligible !== 1) {
+    return fail(c, 'MEDIA_DELETE_SNAPSHOT_REQUIRED', 'Gere um snapshot final válido antes da exclusão.', 409);
+  }
+  if (snapshot.dryRunHash !== row.deleteCheckHash) {
+    return fail(c, 'MEDIA_DELETE_SNAPSHOT_INVALID', 'O snapshot não pertence ao dry-run atual.', 409);
+  }
+  const snapshotCreatedAt = new Date(snapshot.createdAt.replace(' ', 'T') + 'Z').getTime();
+  if (!Number.isFinite(snapshotCreatedAt) || snapshotCreatedAt > new Date(row.deleteCheckExpiresAt).getTime()) {
+    return fail(c, 'MEDIA_DELETE_SNAPSHOT_INVALID', 'O snapshot não pertence à janela válida do dry-run.', 409);
   }
 
   let inspection;
