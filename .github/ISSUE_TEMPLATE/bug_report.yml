@@ -1,5 +1,5 @@
 name: Bug report
-about: Relate um problema reproduzível na DejotaCode API
+description: Relate um problema reproduzível na DejotaCode API
 body:
   - type: textarea
     attributes:

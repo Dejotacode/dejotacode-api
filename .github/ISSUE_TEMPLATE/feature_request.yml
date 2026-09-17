@@ -1,5 +1,5 @@
 name: Feature request
-about: Sugira uma melhoria para a API ou operação
+description: Sugira uma melhoria para a API ou operação
 body:
   - type: textarea
     attributes:
