@@ -6,6 +6,7 @@ export type Bindings = {
   CMS_BOOTSTRAP_TOKEN: string;
   GITHUB_EDITOR_TOKEN?: string;
   GITHUB_EDITOR_REPO?: string;
+  KIWIFY_WEBHOOK_TOKEN?: string;
   AUTH_RATE_LIMITER: RateLimit;
   FORM_RATE_LIMITER: RateLimit;
   ANALYTICS_RATE_LIMITER: RateLimit;

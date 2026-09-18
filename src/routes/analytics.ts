@@ -133,7 +133,11 @@ analytics.get('/summary', requireAuth, async (c) => {
               'product-linux-buy-kiwify-hero',
               'product-linux-buy-kiwify-final'
             )
-          THEN total ELSE 0 END), 0) AS product_to_checkout_clicks
+          THEN total ELSE 0 END), 0) AS product_to_checkout_clicks,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'purchase_approved'
+            AND campaign = 'linux-do-zero'
+          THEN total ELSE 0 END), 0) AS approved_purchases
       FROM daily_metrics
       WHERE metric_date >= date('now', '-30 days')
     `,
@@ -150,6 +154,7 @@ analytics.get('/summary', requireAuth, async (c) => {
         articleToProductClicks: Number(linuxDoZeroFunnel?.article_to_product_clicks ?? 0),
         trailToProductClicks: Number(linuxDoZeroFunnel?.trail_to_product_clicks ?? 0),
         productToCheckoutClicks: Number(linuxDoZeroFunnel?.product_to_checkout_clicks ?? 0),
+        approvedPurchases: Number(linuxDoZeroFunnel?.approved_purchases ?? 0),
       },
     },
   });
