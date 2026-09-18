@@ -1,0 +1,19 @@
+name: Feature request
+description: Sugira uma melhoria para a API ou operação
+body:
+  - type: textarea
+    attributes:
+      label: Problema ou oportunidade
+      description: Qual necessidade técnica ou de produto deve ser atendida?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposta
+      description: Descreva a solução e seus limites.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Impacto operacional
+      description: Há migration, mudança de binding, secret ou deploy envolvido?
