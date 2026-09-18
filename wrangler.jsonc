@@ -3,6 +3,7 @@
   "name": "dejotacode-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-08",
+  "keep_vars": true,
   "observability": { "enabled": true },
   "triggers": { "crons": ["17 3 * * *"] },
   "ratelimits": [
@@ -27,6 +28,9 @@
     },
     "production": {
       "name": "dejotacode-api",
+      "secrets": {
+        "required": ["CMS_BOOTSTRAP_TOKEN", "GITHUB_EDITOR_TOKEN", "KIWIFY_WEBHOOK_TOKEN"]
+      },
       "routes": [{ "pattern": "api.dejotacode.com.br", "custom_domain": true }],
       "triggers": { "crons": ["17 3 * * *"] },
       "ratelimits": [
