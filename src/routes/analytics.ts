@@ -112,10 +112,45 @@ analytics.get('/summary', requireAuth, async (c) => {
     `,
   ).all();
 
+  const linuxDoZeroFunnel = await c.env.DB.prepare(
+    `
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN event_type = 'page_view'
+            AND path = '/produtos/linux-do-zero/'
+          THEN total ELSE 0 END), 0) AS product_page_views,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'cta_click'
+            AND campaign = 'article-linux-ebook-product'
+          THEN total ELSE 0 END), 0) AS article_to_product_clicks,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'cta_click'
+            AND campaign = 'trail-linux-ebook-product'
+          THEN total ELSE 0 END), 0) AS trail_to_product_clicks,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'cta_click'
+            AND campaign IN (
+              'product-linux-buy-kiwify-hero',
+              'product-linux-buy-kiwify-final'
+            )
+          THEN total ELSE 0 END), 0) AS product_to_checkout_clicks
+      FROM daily_metrics
+      WHERE metric_date >= date('now', '-30 days')
+    `,
+  ).first();
+
   return ok(c, {
     periodDays: 30,
     totals: totals.results,
     pages: pages.results,
     campaigns: campaigns.results,
+    productFunnel: {
+      linuxDoZero: {
+        productPageViews: Number(linuxDoZeroFunnel?.product_page_views ?? 0),
+        articleToProductClicks: Number(linuxDoZeroFunnel?.article_to_product_clicks ?? 0),
+        trailToProductClicks: Number(linuxDoZeroFunnel?.trail_to_product_clicks ?? 0),
+        productToCheckoutClicks: Number(linuxDoZeroFunnel?.product_to_checkout_clicks ?? 0),
+      },
+    },
   });
 });
