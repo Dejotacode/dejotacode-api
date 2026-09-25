@@ -12,7 +12,8 @@
     "db:production": "wrangler d1 migrations apply DB --env production --remote",
     "backup:d1:production": "node scripts/backup-d1-production.mjs",
     "inventory:r2:production": "node scripts/inventory-r2-production.mjs",
-    "check:ops": "node --check scripts/backup-d1-production.mjs && node --check scripts/inventory-r2-production.mjs && npm run backup:d1:production -- --dry-run"
+    "check:ops": "node --check scripts/backup-d1-production.mjs && node --check scripts/inventory-r2-production.mjs && node --check scripts/verify-d1-backups.mjs && npm run backup:d1:production -- --dry-run",
+    "verify:d1:backups": "node scripts/verify-d1-backups.mjs"
   },
   "dependencies": {
     "hono": "^4.13.7",
