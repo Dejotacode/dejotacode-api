@@ -29,7 +29,7 @@
     "production": {
       "name": "dejotacode-api",
       "secrets": {
-        "required": ["CMS_BOOTSTRAP_TOKEN", "GITHUB_EDITOR_TOKEN", "KIWIFY_WEBHOOK_TOKEN"]
+        "required": ["CMS_BOOTSTRAP_TOKEN", "GITHUB_EDITOR_TOKEN", "KIWIFY_WEBHOOK_TOKEN", "HOTMART_HOTTOK"]
       },
       "routes": [{ "pattern": "api.dejotacode.com.br", "custom_domain": true }],
       "triggers": { "crons": ["17 3 * * *"] },
