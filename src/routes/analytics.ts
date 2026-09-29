@@ -9,6 +9,7 @@ import type { AppEnv } from '../types';
 const analyticsEvents = [
   'page_view',
   'cta_click',
+  'affiliate_click',
   'lead_submit',
   'contact_submit',
   'form_start',
