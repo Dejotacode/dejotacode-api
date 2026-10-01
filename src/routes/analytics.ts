@@ -10,6 +10,12 @@ const analyticsEvents = [
   'page_view',
   'cta_click',
   'affiliate_click',
+  'store_view',
+  'store_category_view',
+  'store_product_view',
+  'store_guide_view',
+  'store_related_article_click',
+  'store_setup_click',
   'lead_submit',
   'contact_submit',
   'form_start',
@@ -113,6 +119,34 @@ analytics.get('/summary', requireAuth, async (c) => {
     `,
   ).all();
 
+  const storeFunnel = await c.env.DB.prepare(
+    `
+      SELECT
+        COALESCE(SUM(CASE
+          WHEN event_type = 'store_view'
+          THEN total ELSE 0 END), 0) AS store_views,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'store_category_view'
+          THEN total ELSE 0 END), 0) AS category_views,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'store_product_view'
+          THEN total ELSE 0 END), 0) AS product_views,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'store_guide_view'
+          THEN total ELSE 0 END), 0) AS guide_views,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'affiliate_click'
+            AND campaign LIKE 'affiliate:%'
+          THEN total ELSE 0 END), 0) AS affiliate_clicks,
+        COALESCE(SUM(CASE
+          WHEN event_type = 'store_related_article_click'
+          THEN total ELSE 0 END), 0) AS related_article_clicks
+      FROM daily_metrics
+      WHERE metric_date >= date('now', '-30 days')
+        AND path LIKE '/store/%'
+    `,
+  ).first();
+
   const linuxDoZeroFunnel = await c.env.DB.prepare(
     `
       SELECT
@@ -149,6 +183,14 @@ analytics.get('/summary', requireAuth, async (c) => {
     totals: totals.results,
     pages: pages.results,
     campaigns: campaigns.results,
+    storeFunnel: {
+      storeViews: Number(storeFunnel?.store_views ?? 0),
+      categoryViews: Number(storeFunnel?.category_views ?? 0),
+      productViews: Number(storeFunnel?.product_views ?? 0),
+      guideViews: Number(storeFunnel?.guide_views ?? 0),
+      affiliateClicks: Number(storeFunnel?.affiliate_clicks ?? 0),
+      relatedArticleClicks: Number(storeFunnel?.related_article_clicks ?? 0),
+    },
     productFunnel: {
       linuxDoZero: {
         productPageViews: Number(linuxDoZeroFunnel?.product_page_views ?? 0),
