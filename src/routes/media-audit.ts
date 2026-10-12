@@ -8,6 +8,20 @@ type SnapshotPayload = {
   dryRun?: Record<string, unknown>;
 };
 
+type MediaAuditItem = {
+  id: number;
+  objectKey: string;
+  contentType: string;
+  sizeBytes: number;
+  altText: string;
+  createdAt: string;
+  reviewStatus: string;
+  cleanupStatus: string;
+  deleted: boolean;
+  snapshotId?: number;
+  snapshotCreatedAt?: unknown;
+};
+
 const parseSnapshot = (value: unknown): SnapshotPayload | null => {
   if (typeof value !== 'string' || !value) return null;
   try {
@@ -50,7 +64,16 @@ mediaAudit.get('/items', async (c) => {
       size_bytes AS sizeBytes,alt_text AS altText,created_at AS createdAt,
       review_status AS reviewStatus,cleanup_status AS cleanupStatus
      FROM media ORDER BY created_at DESC LIMIT 100`
-  ).all<Record<string, unknown>>();
+  ).all<{
+    id: number;
+    objectKey: string;
+    contentType: string;
+    sizeBytes: number;
+    altText: string;
+    createdAt: string;
+    reviewStatus: string;
+    cleanupStatus: string;
+  }>();
 
   const deletedSnapshots = await c.env.DB.prepare(
     `SELECT s.id AS snapshotId,s.media_id AS mediaId,s.object_key AS objectKey,
@@ -62,7 +85,7 @@ mediaAudit.get('/items', async (c) => {
      ORDER BY s.created_at DESC LIMIT 100`
   ).all<Record<string, unknown>>();
 
-  const deleted = deletedSnapshots.results.flatMap((row) => {
+  const deleted: MediaAuditItem[] = deletedSnapshots.results.flatMap((row) => {
     const snapshot = parseSnapshot(row.snapshotJson);
     const media = snapshot?.media;
     if (!media) return [];
@@ -81,10 +104,11 @@ mediaAudit.get('/items', async (c) => {
     }];
   });
 
-  const items = [
+  const items: MediaAuditItem[] = [
     ...active.results.map((item) => ({ ...item, deleted: false })),
     ...deleted,
-  ].sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  ];
+  items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return ok(c, { items });
 });
